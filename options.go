@@ -5,6 +5,8 @@ import (
 	"io"
 	"io/ioutil"
 	"time"
+
+	"github.com/docker/docker/api/types"
 )
 
 const defaultStartTimeout = time.Second * 60
@@ -21,6 +23,12 @@ type Option func(*options)
 func WithContext(ctx context.Context) Option {
 	return func(o *options) {
 		o.ctx = ctx
+	}
+}
+
+func WithPreInitCommand(cmd PreInitCommand) Option {
+	return func(o *options) {
+		o.preInitCommands = append(o.preInitCommands, cmd)
 	}
 }
 
@@ -94,6 +102,8 @@ func WithTag(tag string) Option {
 	}
 }
 
+type PreInitCommand types.ExecConfig
+
 // HealthcheckFunc defines a function to be used to determine container health.
 // It receives a host and a port, and returns an error if the container is not
 // ready, or nil when the container can be used. One example of HealthcheckFunc
@@ -116,6 +126,7 @@ func nopInit(*Container) error {
 
 type options struct {
 	ctx                 context.Context
+	preInitCommands     []PreInitCommand
 	init                InitFunc
 	healthcheck         HealthcheckFunc
 	healthcheckInterval time.Duration

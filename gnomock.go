@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/pkg/stdcopy"
 	"golang.org/x/sync/errgroup"
 )
@@ -64,6 +65,40 @@ func StartCustom(image string, ports NamedPorts, opts ...Option) (c *Container, 
 	err = wait(waitCtx, c, config)
 	if err != nil {
 		return c, fmt.Errorf("can't connect to container: %w", err)
+	}
+
+	for _, cmd := range config.preInitCommands {
+		res, err := cli.client.ContainerExecCreate(waitCtx, c.ID, types.ExecConfig(cmd))
+		if err != nil {
+			return nil, fmt.Errorf("can't prepare pre-init command: %w", err)
+		}
+
+		out, err := cli.client.ContainerExecAttach(waitCtx, res.ID, types.ExecConfig(cmd))
+		if err != nil {
+			return nil, err
+		}
+
+		status, err := cli.client.ContainerExecInspect(waitCtx, res.ID)
+		if err != nil {
+			return nil, fmt.Errorf("can't inspect pre-init cmd: %w", err)
+		}
+
+		ticker := time.NewTicker(config.healthcheckInterval)
+
+		for ; status.Running && err == nil; <-ticker.C {
+			select {
+			case <-waitCtx.Done():
+				return c, context.Canceled
+			default:
+				status, err = cli.client.ContainerExecInspect(waitCtx, res.ID)
+				if err != nil {
+					return nil, fmt.Errorf("can't inspect pre-init cmd: %w", err)
+				}
+			}
+		}
+
+		out.Close()
+		ticker.Stop()
 	}
 
 	err = config.init(c)
