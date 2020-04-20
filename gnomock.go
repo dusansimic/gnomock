@@ -11,6 +11,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"os"
 	"strings"
 	"time"
 
@@ -77,6 +78,10 @@ func StartCustom(image string, ports NamedPorts, opts ...Option) (c *Container, 
 		if err != nil {
 			return nil, err
 		}
+
+		go func() {
+			io.Copy(os.Stdout, out.Reader)
+		}()
 
 		status, err := cli.client.ContainerExecInspect(waitCtx, res.ID)
 		if err != nil {
