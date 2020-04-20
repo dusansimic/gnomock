@@ -11,7 +11,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"os"
 	"strings"
 	"time"
 
@@ -68,34 +67,33 @@ func StartCustom(image string, ports NamedPorts, opts ...Option) (c *Container, 
 		return c, fmt.Errorf("can't connect to container: %w", err)
 	}
 
+	preInitCtx, cancelPreInit := context.WithTimeout(config.ctx, config.preInitTimeout)
+	defer cancelPreInit()
+
 	for _, cmd := range config.preInitCommands {
-		res, err := cli.client.ContainerExecCreate(waitCtx, c.ID, types.ExecConfig(cmd))
+		res, err := cli.client.ContainerExecCreate(preInitCtx, c.ID, types.ExecConfig(cmd))
 		if err != nil {
 			return nil, fmt.Errorf("can't prepare pre-init command: %w", err)
 		}
 
-		out, err := cli.client.ContainerExecAttach(waitCtx, res.ID, types.ExecConfig(cmd))
+		out, err := cli.client.ContainerExecAttach(preInitCtx, res.ID, types.ExecConfig(cmd))
 		if err != nil {
 			return nil, err
 		}
 
-		go func() {
-			io.Copy(os.Stdout, out.Reader)
-		}()
-
-		status, err := cli.client.ContainerExecInspect(waitCtx, res.ID)
+		status, err := cli.client.ContainerExecInspect(preInitCtx, res.ID)
 		if err != nil {
 			return nil, fmt.Errorf("can't inspect pre-init cmd: %w", err)
 		}
 
 		ticker := time.NewTicker(config.healthcheckInterval)
 
-		for ; status.Running && err == nil; <-ticker.C {
+		for ; status.Running; <-ticker.C {
 			select {
-			case <-waitCtx.Done():
+			case <-preInitCtx.Done():
 				return c, context.Canceled
 			default:
-				status, err = cli.client.ContainerExecInspect(waitCtx, res.ID)
+				status, err = cli.client.ContainerExecInspect(preInitCtx, res.ID)
 				if err != nil {
 					return nil, fmt.Errorf("can't inspect pre-init cmd: %w", err)
 				}

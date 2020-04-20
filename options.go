@@ -12,6 +12,7 @@ import (
 const defaultStartTimeout = time.Second * 60
 const defaultWaitTimeout = time.Second * 10
 const defaultHealthcheckInterval = time.Millisecond * 50
+const defaultPreInitTimeout = time.Second * 10
 
 // Option is an optional Gnomock configuration. Functions implementing this
 // signature may be combined to configure Gnomock containers for different use
@@ -29,6 +30,12 @@ func WithContext(ctx context.Context) Option {
 func WithPreInitCommand(cmd PreInitCommand) Option {
 	return func(o *options) {
 		o.preInitCommands = append(o.preInitCommands, cmd)
+	}
+}
+
+func WithPreInitTimeout(t time.Duration) Option {
+	return func(o *options) {
+		o.preInitTimeout = t
 	}
 }
 
@@ -126,12 +133,13 @@ func nopInit(*Container) error {
 
 type options struct {
 	ctx                 context.Context
-	preInitCommands     []PreInitCommand
 	init                InitFunc
 	healthcheck         HealthcheckFunc
 	healthcheckInterval time.Duration
 	startTimeout        time.Duration
 	waitTimeout         time.Duration
+	preInitCommands     []PreInitCommand
+	preInitTimeout      time.Duration
 	env                 []string
 	logWriter           io.Writer
 	tag                 string
@@ -145,6 +153,7 @@ func buildConfig(opts ...Option) *options {
 		healthcheckInterval: defaultHealthcheckInterval,
 		startTimeout:        defaultStartTimeout,
 		waitTimeout:         defaultWaitTimeout,
+		preInitTimeout:      defaultPreInitTimeout,
 		logWriter:           ioutil.Discard,
 		tag:                 "",
 	}
